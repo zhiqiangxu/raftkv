@@ -137,9 +137,9 @@ func (c *Connection) Dump() (map[string][]byte, error) {
 }
 
 // Join to join
-func (c *Connection) Join(raftAddr, nodeID string) error {
+func (c *Connection) Join(raftAddr string) error {
 
-	p := server.JoinParam{RaftAddr: raftAddr, NodeID: nodeID}
+	p := server.JoinParam{RaftAddr: raftAddr}
 
 	bytes, err := gob.ToBytes(&p)
 	if err != nil {

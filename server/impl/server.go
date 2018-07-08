@@ -62,7 +62,7 @@ func (s *Server) ListenAndServe() error {
 		if err != nil {
 			return err
 		}
-		err = conn.Join(s.config.RaftAddr, s.config.RaftAddr)
+		err = conn.Join(s.config.RaftAddr)
 		if err != nil {
 			return err
 		}
@@ -224,8 +224,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 		case server.JoinCmd:
 			p := server.JoinParam{}
 			err = gob.FromBytes(payload[12:], &p)
-			logger.Info(p.RaftAddr, p.NodeID)
-			err = s.Join(p.RaftAddr, p.NodeID)
+			logger.Info(p.RaftAddr)
+			err = s.Join(p.RaftAddr, p.RaftAddr)
 			if err == nil {
 				writeChan <- server.MakePacket(requestID, server.JoinRespCmd, nil)
 			}

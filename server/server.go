@@ -70,8 +70,6 @@ type DelParam struct {
 type JoinParam struct {
 	// RaftAddr for node
 	RaftAddr string
-	// NodeID for raft node
-	NodeID string
 }
 
 // GetResp is resp for GetParam

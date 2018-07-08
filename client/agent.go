@@ -13,7 +13,7 @@ type Connection interface {
 	Delete(key []byte) error
 	Get(key []byte) ([]byte, error)
 	Dump() (map[string][]byte, error)
-	Join(raftAddr, nodeID string) error
+	Join(raftAddr string) error
 	Subscribe(cb OnResponse) error
 	Close() error
 }
