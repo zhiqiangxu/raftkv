@@ -127,13 +127,42 @@ func (c *Connection) Get(key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return resultBytes, nil
+
+	if resultBytes == nil {
+		return nil, nil
+	}
+
+	resp := server.GetResp{}
+	err = gob.FromBytes(resultBytes, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Resp, nil
 }
 
 // Dump do dump
-func (c *Connection) Dump() (map[string][]byte, error) {
+func (c *Connection) Dump() (map[string]string, error) {
 
-	return nil, nil
+	var resultBytes []byte
+	requestID := PoorManUUID()
+	err := c.sendCmdBlocking(requestID, server.DumpCmd, nil, func(cmd server.Cmd, bytes []byte) {
+		resultBytes = bytes
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if resultBytes == nil {
+		return nil, nil
+	}
+
+	resp := server.DumpResp{}
+	err = gob.FromBytes(resultBytes, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.M, nil
 }
 
 // Join to join

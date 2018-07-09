@@ -12,7 +12,7 @@ type Connection interface {
 	Set(key []byte, value []byte) error
 	Delete(key []byte) error
 	Get(key []byte) ([]byte, error)
-	Dump() (map[string][]byte, error)
+	Dump() (map[string]string, error)
 	Join(raftAddr string) error
 	Subscribe(cb OnResponse) error
 	Close() error

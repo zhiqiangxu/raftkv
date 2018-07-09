@@ -139,6 +139,16 @@ func (s *Store) Delete(key string) error {
 	return f.Error()
 }
 
+// Dump returns all data
+func (s *Store) Dump() map[string]string {
+	m := make(map[string]string)
+	s.m.Range(func(key, value interface{}) bool {
+		m[key.(string)] = value.(string)
+		return true
+	})
+	return m
+}
+
 // Join joins a node, identified by nodeID and located at addr, to this store.
 // The node must be ready to respond to Raft communications at that address.
 func (s *Store) Join(nodeID, addr string) error {

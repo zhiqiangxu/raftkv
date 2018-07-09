@@ -11,7 +11,7 @@ type Server interface {
 	Set(key []byte, value []byte) error
 	Delete(key []byte) error
 	Get(key []byte) ([]byte, error)
-	Dump() (map[string][]byte, error)
+	Dump() map[string]string
 	Join(raftAddr, nodeID string) error
 }
 
@@ -75,6 +75,11 @@ type JoinParam struct {
 // GetResp is resp for GetParam
 type GetResp struct {
 	Resp []byte
+}
+
+// DumpResp is resp for dump
+type DumpResp struct {
+	M map[string]string
 }
 
 // MakePacket generate packet

@@ -204,6 +204,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		case server.GetCmd:
 			p := server.GetParam{}
 			err = gob.FromBytes(payload[12:], &p)
+			if err != nil {
+				logger.Info(err)
+				break
+			}
 			var (
 				valueBytes, respBytes []byte
 			)
@@ -218,9 +222,24 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 
 		case server.DeleteCmd:
-			err = s.Delete(nil)
+			p := server.DelParam{}
+			err = gob.FromBytes(payload[12:], &p)
+			err = s.Delete(p.Key)
+			if err == nil {
+				writeChan <- server.MakePacket(requestID, server.DeleteRespCmd, nil)
+			}
 		case server.DumpCmd:
-			_, err = s.Dump()
+			m := s.Dump()
+			var (
+				respBytes []byte
+			)
+			if len(m) > 0 {
+				resp := server.DumpResp{M: m}
+				respBytes, err = gob.ToBytes(resp)
+				if err == nil {
+					writeChan <- server.MakePacket(requestID, server.DumpRespCmd, respBytes)
+				}
+			}
 		case server.JoinCmd:
 			p := server.JoinParam{}
 			err = gob.FromBytes(payload[12:], &p)
@@ -271,7 +290,7 @@ func (s *Server) Set(key []byte, value []byte) error {
 // Delete do delete
 func (s *Server) Delete(key []byte) error {
 
-	return nil
+	return s.store.Delete(string(key))
 }
 
 // Get do get
@@ -281,9 +300,9 @@ func (s *Server) Get(key []byte) ([]byte, error) {
 }
 
 // Dump to dump
-func (s *Server) Dump() (map[string][]byte, error) {
+func (s *Server) Dump() map[string]string {
 
-	return nil, nil
+	return s.store.Dump()
 }
 
 // Join to join
