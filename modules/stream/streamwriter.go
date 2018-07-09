@@ -26,7 +26,7 @@ func NewWriterWithTimeout(conn net.Conn, timeout int) *Writer {
 	return &Writer{conn: conn, timeout: timeout}
 }
 
-// WriteBytes writes bytes
+// Write writes bytes
 func (w *Writer) Write(bytes []byte) (int, error) {
 	size := len(bytes)
 
