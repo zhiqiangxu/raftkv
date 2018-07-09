@@ -94,10 +94,7 @@ func (c *Connection) Delete(key []byte) error {
 
 func (c *Connection) sendCmdBlocking(requestID uint64, cmd server.Cmd, bytes []byte, f func(server.Cmd, []byte)) error {
 
-	packet := server.MakePacket(requestID, cmd, bytes)
-
-	w := stream.NewWriter(c.conn)
-	_, err := w.Write(packet)
+	err := c.SendCmd(requestID, cmd, bytes)
 	if err != nil {
 		return err
 	}
@@ -111,6 +108,15 @@ func (c *Connection) sendCmdBlocking(requestID uint64, cmd server.Cmd, bytes []b
 		return true
 	}))
 
+}
+
+// SendCmd send the cmd without blocking
+func (c *Connection) SendCmd(requestID uint64, cmd server.Cmd, bytes []byte) error {
+	packet := server.MakePacket(requestID, cmd, bytes)
+
+	w := stream.NewWriter(c.conn)
+	_, err := w.Write(packet)
+	return err
 }
 
 // Get do get

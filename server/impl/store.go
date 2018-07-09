@@ -2,6 +2,7 @@ package impl
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
+)
+
+var (
+	ErrNotLeader = errors.New("not leader")
 )
 
 const (
@@ -103,7 +108,7 @@ type Command struct {
 // Set implements set
 func (s *Store) Set(key, value string) error {
 	if s.raft.State() != raft.Leader {
-		return fmt.Errorf("not leader")
+		return ErrNotLeader
 	}
 
 	c := &Command{
@@ -123,7 +128,7 @@ func (s *Store) Set(key, value string) error {
 // Delete deletes the given key.
 func (s *Store) Delete(key string) error {
 	if s.raft.State() != raft.Leader {
-		return fmt.Errorf("not leader")
+		return ErrNotLeader
 	}
 
 	c := &Command{

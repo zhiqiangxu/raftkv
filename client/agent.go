@@ -15,6 +15,7 @@ type Connection interface {
 	Dump() (map[string]string, error)
 	Join(raftAddr string) error
 	Subscribe(cb OnResponse) error
+	SendCmd(requestID uint64, cmd server.Cmd, bytes []byte) error
 	Close() error
 }
 
