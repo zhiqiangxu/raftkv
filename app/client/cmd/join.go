@@ -5,8 +5,6 @@ import (
 	"qpush/modules/logger"
 	"raftkv/client"
 	cimpl "raftkv/client/impl"
-	"raftkv/modules/gob"
-	"raftkv/server"
 
 	"github.com/spf13/cobra"
 )
@@ -23,16 +21,14 @@ var joinCmd = &cobra.Command{
 			panic(err)
 		}
 		logger.Info("test2")
-		bytes, err := conn.Get([]byte(args[1]))
+		err = conn.Join(args[1])
 		if err != nil {
 			panic(err)
 		}
 
-		resp := server.GetResp{}
-		gob.FromBytes(bytes, &resp)
-		fmt.Println("get", string(resp.Resp))
+		fmt.Println("join ok")
 	}}
 
 func init() {
-	rootCmd.AddCommand(getCmd)
+	rootCmd.AddCommand(joinCmd)
 }

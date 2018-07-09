@@ -11,6 +11,7 @@ var rootCmd = &cobra.Command{
 	Use: "raftkv",
 }
 
+// Execute start the cmd
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
