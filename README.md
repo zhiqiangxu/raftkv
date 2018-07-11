@@ -16,3 +16,5 @@ go run app/client/agent.go set 192.168.68.237:8081 key value2
 #从另一个node读
 go run app/client/agent.go get 192.168.68.237:8083 key
 ```
+#kill一个，集群依然work
+
