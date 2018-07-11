@@ -92,17 +92,21 @@ func (c *Connection) Delete(key []byte) error {
 	})
 }
 
-func (c *Connection) sendCmdBlocking(requestID uint64, cmd server.Cmd, bytes []byte, f func(server.Cmd, []byte)) error {
+func (c *Connection) sendCmdBlocking(requestID uint64, cmd server.Cmd, bytes []byte, f func(server.Cmd, []byte)) (err error) {
 
-	err := c.SendCmd(requestID, cmd, bytes)
+	err = c.SendCmd(requestID, cmd, bytes)
 	if err != nil {
-		return err
+		return
 	}
 
-	err = c.Subscribe(NewCallBack(func(ID uint64, respCmd server.Cmd, respBytes []byte) bool {
+	err2 := c.Subscribe(NewCallBack(func(ID uint64, respCmd server.Cmd, respBytes []byte) bool {
 		logger.Info(requestID, respCmd)
 		if ID == requestID {
 			if respCmd == server.NotLeaderCmd {
+				if len(respBytes) == 0 {
+					err = errors.New("no leader")
+					return false
+				}
 				logger.Info("NotLeaderCmd", string(respBytes))
 				agent := &Agent{}
 				var nc client.Connection
@@ -121,7 +125,10 @@ func (c *Connection) sendCmdBlocking(requestID uint64, cmd server.Cmd, bytes []b
 		return true
 	}))
 
-	return err
+	if err == nil {
+		err = err2
+	}
+	return
 }
 
 // SendCmd send the cmd without blocking
