@@ -99,15 +99,29 @@ func (c *Connection) sendCmdBlocking(requestID uint64, cmd server.Cmd, bytes []b
 		return err
 	}
 
-	return c.Subscribe(NewCallBack(func(ID uint64, cmd server.Cmd, bytes []byte) bool {
-		logger.Info(requestID, cmd)
+	err = c.Subscribe(NewCallBack(func(ID uint64, respCmd server.Cmd, respBytes []byte) bool {
+		logger.Info(requestID, respCmd)
 		if ID == requestID {
-			f(cmd, bytes)
+			if respCmd == server.NotLeaderCmd {
+				logger.Info("NotLeaderCmd", string(respBytes))
+				agent := &Agent{}
+				var nc client.Connection
+				nc, err = agent.Dial(string(respBytes))
+				if err != nil {
+					return false
+				}
+				err = nc.(*Connection).sendCmdBlocking(requestID, cmd, bytes, f)
+				nc.Close()
+				return false
+			}
+
+			f(respCmd, respBytes)
 			return false
 		}
 		return true
 	}))
 
+	return err
 }
 
 // SendCmd send the cmd without blocking
@@ -172,9 +186,9 @@ func (c *Connection) Dump() (map[string]string, error) {
 }
 
 // Join to join
-func (c *Connection) Join(raftAddr string) error {
+func (c *Connection) Join(raftAddr, apiAddr string) error {
 
-	p := server.JoinParam{RaftAddr: raftAddr}
+	p := server.JoinParam{RaftAddr: raftAddr, APIAddr: apiAddr}
 
 	bytes, err := gob.ToBytes(&p)
 	if err != nil {

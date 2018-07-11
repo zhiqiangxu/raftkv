@@ -10,7 +10,7 @@ import (
 )
 
 var joinCmd = &cobra.Command{
-	Use:   "get [api address] [node raft addr] [node id]",
+	Use:   "get [api address] [node raft addr] [api addr]",
 	Short: "connect to [api address] and join a node",
 	Args:  cobra.MinimumNArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -21,7 +21,7 @@ var joinCmd = &cobra.Command{
 			panic(err)
 		}
 		logger.Info("test2")
-		err = conn.Join(args[1])
+		err = conn.Join(args[1], args[2])
 		if err != nil {
 			panic(err)
 		}

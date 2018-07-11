@@ -17,12 +17,14 @@ import (
 )
 
 var (
+	// ErrNotLeader when write on non-leader
 	ErrNotLeader = errors.New("not leader")
 )
 
 const (
 	retainSnapshotCount = 2
 	raftTimeout         = 10 * time.Second
+	leaderWaitDelay     = 1000 * time.Millisecond
 )
 
 // Store is a simple key-value store, where all changes are made via Raft consensus.
@@ -30,7 +32,8 @@ type Store struct {
 	RaftDir  string
 	RaftBind string
 
-	m sync.Map // The key-value store for the system.
+	m    sync.Map // The key-value store for the system.
+	meta sync.Map // the meta info for nodes
 
 	raft *raft.Raft // The consensus mechanism
 }
@@ -88,6 +91,24 @@ func (s *Store) Open(enableSingle bool, localID string) error {
 	return nil
 }
 
+// WaitForLeader blocks until a leader is detected
+func (s *Store) WaitForLeader(done chan bool) string {
+	tck := time.NewTicker(leaderWaitDelay)
+	defer tck.Stop()
+
+	for {
+		select {
+		case <-tck.C:
+			l := string(s.raft.Leader())
+			if l != "" {
+				return l
+			}
+		case <-done:
+			return ""
+		}
+	}
+}
+
 // Get returns the value for the given key.
 func (s *Store) Get(key string) (data string, ok bool) {
 	value, ok := s.m.Load(key)
@@ -122,7 +143,7 @@ func (s *Store) Set(key, value string) error {
 	}
 
 	f := s.raft.Apply(b, raftTimeout)
-	return f.Error()
+	return convertErr(f.Error())
 }
 
 // Delete deletes the given key.
@@ -141,7 +162,7 @@ func (s *Store) Delete(key string) error {
 	}
 
 	f := s.raft.Apply(b, raftTimeout)
-	return f.Error()
+	return convertErr(f.Error())
 }
 
 // Dump returns all data
@@ -156,11 +177,15 @@ func (s *Store) Dump() map[string]string {
 
 // Join joins a node, identified by nodeID and located at addr, to this store.
 // The node must be ready to respond to Raft communications at that address.
-func (s *Store) Join(nodeID, addr string) error {
+func (s *Store) Join(nodeID, addr, apiAddr string) error {
+
+	if s.raft.State() != raft.Leader {
+		return ErrNotLeader
+	}
 
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		return err
+		return convertErr(err)
 	}
 
 	for _, srv := range configFuture.Configuration().Servers {
@@ -175,16 +200,55 @@ func (s *Store) Join(nodeID, addr string) error {
 
 			future := s.raft.RemoveServer(srv.ID, 0, 0)
 			if err := future.Error(); err != nil {
-				return fmt.Errorf("error removing existing node %s at %s: %s", nodeID, addr, err)
+				return convertErr(future.Error())
 			}
 		}
 	}
 
 	f := s.raft.AddVoter(raft.ServerID(nodeID), raft.ServerAddress(addr), 0, 0)
 	if f.Error() != nil {
-		return f.Error()
+		return convertErr(f.Error())
 	}
-	return nil
+
+	return s.SetAPIAddr(nodeID, apiAddr)
+}
+
+func convertErr(err error) error {
+	if err == raft.ErrNotLeader {
+		return ErrNotLeader
+	}
+
+	return err
+}
+
+// LeaderAPIAddr returns leader api address
+func (s *Store) LeaderAPIAddr() string {
+	addr, ok := s.meta.Load(string(s.raft.Leader()))
+	if !ok {
+		return ""
+	}
+	return addr.(string)
+}
+
+// SetAPIAddr set api address for node
+func (s *Store) SetAPIAddr(nodeID, apiAddr string) error {
+
+	addr, ok := s.meta.Load(nodeID)
+	if ok && addr.(string) == apiAddr {
+		return nil
+	}
+
+	c := &Command{
+		Cmd:   server.JoinCmd,
+		Key:   nodeID,
+		Value: apiAddr}
+	b, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+
+	f := s.raft.Apply(b, raftTimeout)
+	return convertErr(f.Error())
 }
 
 type fsm Store
@@ -203,6 +267,12 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 	case server.DeleteCmd:
 		f.m.Delete(c.Key)
 		return nil
+	case server.JoinCmd:
+		fmt.Println("JoinCmd called", c.Key, c.Value)
+		f.meta.Store(c.Key, c.Value)
+		value, ok := f.meta.Load(c.Key)
+		fmt.Println("LeaderAPIAddr", (*Store)(f).LeaderAPIAddr(), value.(string), ok)
+		return nil
 	default:
 		panic(fmt.Sprintf("unrecognized command: %d", c.Cmd))
 	}
@@ -215,39 +285,56 @@ func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 		o[key.(string)] = value.(string)
 		return true
 	})
-	return &fsmSnapshot{store: o}, nil
+	meta := make(map[string]interface{})
+	f.meta.Range(func(key, value interface{}) bool {
+		meta[key.(string)] = value
+		return true
+	})
+	return &fsmSnapshot{store: o, meta: meta}, nil
 }
 
 // Restore stores the key-value store to a previous state.
 func (f *fsm) Restore(rc io.ReadCloser) error {
 
-	o := make(map[string]string)
+	o := make(map[string]interface{})
 	if err := json.NewDecoder(rc).Decode(&o); err != nil {
 		return err
 	}
+	ostore, _ := o["store"].(map[string]string)
+	ometa, _ := o["meta"].(map[string]interface{})
 
 	// Set the state from the snapshot, no lock required according to
 	// Hashicorp docs.
 	m := &f.m
+	meta := &f.meta
 	m.Range(func(key, value interface{}) bool {
 		m.Delete(key)
 		return true
 	})
-	for k, v := range o {
+	meta.Range(func(key, value interface{}) bool {
+		m.Delete(key)
+		return true
+	})
+	for k, v := range ostore {
 		m.Store(k, v)
 	}
 
+	for k, v := range ometa {
+		meta.Store(k, v)
+	}
 	return nil
 }
 
 type fsmSnapshot struct {
 	store map[string]string
+	meta  map[string]interface{}
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	err := func() error {
 		// Encode data.
-		b, err := json.Marshal(f.store)
+		data := map[string]interface{}{"store": f.store, "meta": f.meta}
+		b, err := json.Marshal(data)
 		if err != nil {
 			return err
 		}

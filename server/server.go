@@ -12,7 +12,7 @@ type Server interface {
 	Delete(key []byte) error
 	Get(key []byte) ([]byte, error)
 	Dump() map[string]string
-	Join(raftAddr, nodeID string) error
+	Join(raftAddr, nodeID, apiAddr string) error
 }
 
 // Cmd ops server support
@@ -43,6 +43,8 @@ const (
 	NoCmd
 	// ErrCmd is when error happens
 	ErrCmd
+	// NotLeaderCmd when write to non leader
+	NotLeaderCmd
 )
 
 var (
@@ -70,6 +72,8 @@ type DelParam struct {
 type JoinParam struct {
 	// RaftAddr for node
 	RaftAddr string
+	// APIAddr for api address
+	APIAddr string
 }
 
 // GetResp is resp for GetParam

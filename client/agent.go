@@ -13,7 +13,7 @@ type Connection interface {
 	Delete(key []byte) error
 	Get(key []byte) ([]byte, error)
 	Dump() (map[string]string, error)
-	Join(raftAddr string) error
+	Join(raftAddr, apiAddr string) error
 	Subscribe(cb OnResponse) error
 	SendCmd(requestID uint64, cmd server.Cmd, bytes []byte) error
 	Close() error

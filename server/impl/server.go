@@ -55,21 +55,6 @@ func (s *Server) ListenAndServe() error {
 		return err
 	}
 
-	if s.config.Join != "" {
-
-		agent := cimpl.Agent{}
-		conn, err := agent.Dial(s.config.Join)
-		if err != nil {
-			return err
-		}
-		err = conn.Join(s.config.RaftAddr)
-		if err != nil {
-			return err
-		}
-		conn.Close()
-
-	}
-
 	quitChan := make(chan os.Signal, 1)
 	signal.Notify(quitChan, os.Interrupt, os.Kill, syscall.SIGTERM)
 
@@ -78,8 +63,53 @@ func (s *Server) ListenAndServe() error {
 	})
 	s.goFunc(s.listenAndServe)
 
+	if s.config.Join != "" {
+
+		err = joinByRequest(s.config.Join, s.config.RaftAddr, s.config.APIAddr)
+
+		if err != nil {
+			return err
+		}
+
+	}
+
+	for {
+		logger.Info("WaitForLeader")
+		l := s.store.WaitForLeader(s.done)
+		logger.Info("leader", l)
+		if l == s.config.RaftAddr {
+			err = s.store.SetAPIAddr(s.config.RaftAddr, s.config.APIAddr)
+			if err != nil {
+				logger.Info("SetAPIAddr err", err)
+				continue
+			}
+			break
+		} else {
+			err = joinByRequest(s.store.LeaderAPIAddr(), s.config.RaftAddr, s.config.APIAddr)
+			if err != nil {
+				logger.Info("joinByRequest err", err)
+				continue
+			}
+			break
+		}
+	}
+
 	s.waitShutdown()
 
+	return nil
+}
+
+func joinByRequest(leaderAPIAddr, nodeRaftAddr, nodeAPIAddr string) error {
+	agent := cimpl.Agent{}
+	conn, err := agent.Dial(leaderAPIAddr)
+	if err != nil {
+		return err
+	}
+	err = conn.Join(nodeRaftAddr, nodeAPIAddr)
+	if err != nil {
+		return err
+	}
+	conn.Close()
 	return nil
 }
 
@@ -123,9 +153,7 @@ func (s *Server) listenAndServe() {
 			logger.Error(fmt.Sprintf("accept failed:%s", err))
 		}
 
-		s.goFunc(func() {
-			s.handleConnection(conn)
-		})
+		go s.handleConnection(conn)
 	}
 }
 
@@ -140,9 +168,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	closeChan := make(chan bool)
 	defer s.closeConnection(conn, closeChan)
 
-	s.goFunc(func() {
-		s.handleWrite(conn, writeChan, closeChan)
-	})
+	go s.handleWrite(conn, writeChan, closeChan)
 
 	r := stream.NewReader(conn)
 
@@ -244,13 +270,18 @@ func (s *Server) handleConnection(conn net.Conn) {
 			p := server.JoinParam{}
 			err = gob.FromBytes(payload[12:], &p)
 			logger.Info(p.RaftAddr)
-			err = s.Join(p.RaftAddr, p.RaftAddr)
+			err = s.Join(p.RaftAddr, p.RaftAddr, p.APIAddr)
 			if err == nil {
 				writeChan <- server.MakePacket(requestID, server.JoinRespCmd, nil)
 			}
 		}
 
 		if err != nil {
+			if err == ErrNotLeader {
+				logger.Info("leader api addr", s.store.LeaderAPIAddr())
+				writeChan <- server.MakePacket(requestID, server.NotLeaderCmd, []byte(s.store.LeaderAPIAddr()))
+				continue
+			}
 			logger.Info("MakePacket")
 			writeChan <- server.MakePacket(requestID, server.ErrCmd, []byte(err.Error()))
 		}
@@ -275,6 +306,7 @@ func (s *Server) handleWrite(conn net.Conn, writeChann chan []byte, closeChan ch
 			logger.Info("WriteBytes called", bytes)
 			_, err := w.Write(bytes)
 			if err != nil {
+				logger.Info("write fail", err)
 				s.closeConnection(conn, closeChan)
 				return
 			}
@@ -306,12 +338,13 @@ func (s *Server) Dump() map[string]string {
 }
 
 // Join to join
-func (s *Server) Join(raftAddr, nodeID string) error {
+func (s *Server) Join(raftAddr, nodeID, apiAddr string) error {
 
-	return s.store.Join(nodeID, raftAddr)
+	return s.store.Join(nodeID, raftAddr, apiAddr)
 }
 
 func (s *Server) closeConnection(conn net.Conn, closeChan chan bool) {
+	// logger.Info("closeConnection called" /*, string(debug.Stack())*/)
 	err := conn.Close()
 	if err != nil {
 		return
